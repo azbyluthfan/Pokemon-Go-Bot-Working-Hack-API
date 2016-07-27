@@ -8,7 +8,10 @@
         "GMAPS_API_KEY": "INSERT API KEY HERE",
         "MIN_KEEP_IV" : 50,
         "KEEP_CP_OVER": 500,
-        "STEP_SIZE": 100
+        "STEP_SIZE": 100,
+        "AUTO_EVOLVE_POKEMON_IDS": [16],
+        "KEEP_BEST_POKEMON_ONLY": true,
+        "KEEP_BEST_POKEMON_MIN_CP": 100
     },
     {  "auth_service": "ptc",
         "username": "USERNAME_HERE",
@@ -18,6 +21,9 @@
         "GMAPS_API_KEY": "INSERT API KEY HERE",
         "MIN_KEEP_IV" : 50,
         "KEEP_CP_OVER": 200,
-        "STEP_SIZE": 100
+        "STEP_SIZE": 100,
+        "AUTO_EVOLVE_POKEMON_IDS": [16],
+        "KEEP_BEST_POKEMON_ONLY": true,
+        "KEEP_BEST_POKEMON_MIN_CP": 100
     }
     ]}

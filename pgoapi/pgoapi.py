@@ -24,6 +24,7 @@ import pgoapi.protos.POGOProtos.Enums_pb2 as RpcEnum
 from pgoapi.poke_utils import *
 from time import sleep
 from collections import defaultdict
+from operator import itemgetter, attrgetter
 import os.path
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,9 @@ class PGoApi:
         self._req_method_list = []
         self._heartbeat_number = 5
         self.pokemon_names = pokemon_names
+        self.AUTO_EVOLVE_POKEMON_IDS = config.get("AUTO_EVOLVE_POKEMON_IDS", [])
+        self.KEEP_BEST_POKEMON_ONLY = config.get("KEEP_BEST_POKEMON_ONLY", False)
+        self.KEEP_BEST_POKEMON_MIN_CP = config.get("KEEP_BEST_POKEMON_MIN_CP", 100)
 
     def call(self):
         if not self._req_method_list:
@@ -139,9 +143,18 @@ class PGoApi:
 
         if 'GET_PLAYER' in res['responses']:
             player_data = res['responses'].get('GET_PLAYER', {}).get('player_data', {})
+            if os.path.isfile("accounts/%s.json" % self.config['username']):
+                with open("accounts/%s.json" % self.config['username'], "r") as f:
+                    file = f.read()
+                    json_file = json.loads(file)
+                inventory_items = json_file.get('GET_INVENTORY', {}).get('inventory_delta', {}).get('inventory_items', [])
+                inventory_items_dict_list = map(lambda x: x.get('inventory_item_data', {}), inventory_items)
+                player_stats = filter(lambda x: 'player_stats' in x, inventory_items_dict_list)[0].get('player_stats', {})
+            else:
+                player_stats = {}
             currencies = player_data.get('currencies', [])
             currency_data = ",".join(map(lambda x: "{0}: {1}".format(x.get('name', 'NA'), x.get('amount', 'NA')), currencies))
-            self.log.info("Username: %s, Currencies: %s", player_data.get('username', 'NA'), currency_data)
+            self.log.info("Username: %s, Lvl: %s, XP: %s/%s, Currencies: %s", player_data.get('username', 'NA'), player_stats.get('level', 'NA'), player_stats.get('experience', 'NA'), player_stats.get('next_level_xp', 'NA'), currency_data)
 
         if 'GET_INVENTORY' in res['responses']:
             with open("accounts/%s.json" % self.config['username'], "w") as f:
@@ -240,43 +253,70 @@ class PGoApi:
                     self.recycle_inventory_item(item_id=item['item_id'], count=recycle_count)
 
         for pokemons in caught_pokemon.values():
-            if len(pokemons) > MIN_SIMILAR_POKEMON:
+            self.auto_evolve(pokemons, inventory_items)
+            self.auto_release_pokemon(pokemons, self.KEEP_BEST_POKEMON_ONLY)
+
+        return self.call()
+
+    
+    def release_single_pokemon(self, pokemon):
+        self.log.debug("Releasing pokemon: %s", pokemon)
+        self.log.info("Releasing pokemon: %s (CP: %s IV: %s)", self.pokemon_names[str(pokemon['pokemon_id'])], pokemon['cp'], pokemonIVPercentage(pokemon))
+        self.release_pokemon(pokemon_id = pokemon["id"])
+        return True
+
+    def auto_release_pokemon(self, pokemons, keep_best_only=False):
+        if len(pokemons) > MIN_SIMILAR_POKEMON:
+            if keep_best_only:
+                caught_pokemon_dict = {}
+                for pokemon in pokemons[MIN_SIMILAR_POKEMON:]:
+                    if pokemon['pokemon_id'] not in caught_pokemon_dict:
+                        caught_pokemon_dict[pokemon['pokemon_id']] = 0                    
+                    if pokemonIV(pokemon) > caught_pokemon_dict[pokemon['pokemon_id']]:
+                        caught_pokemon_dict[pokemon['pokemon_id']] = pokemonIV(pokemon)
+
+                pokemons = sorted(pokemons, lambda x,y: cmp(x['pokemon_id'], y['pokemon_id']))
+                for pokemon in pokemons[MIN_SIMILAR_POKEMON:]:
+                    if pokemonIV(pokemon) < caught_pokemon_dict[pokemon['pokemon_id']] and pokemon['cp'] < self.KEEP_BEST_POKEMON_MIN_CP:
+                        self.release_single_pokemon(pokemon)
+            else:
                 pokemons = sorted(pokemons, lambda x,y: cmp(x['cp'],y['cp']),reverse=True)
                 for pokemon in pokemons[MIN_SIMILAR_POKEMON:]:
                     if 'cp' in pokemon and pokemonIVPercentage(pokemon) < self.MIN_KEEP_IV and pokemon['cp'] < self.KEEP_CP_OVER:
-                        if pokemon['pokemon_id'] == 16:
-                            for inventory_item in inventory_items:
-                                if "pokemon_family" in inventory_item['inventory_item_data'] and inventory_item['inventory_item_data']['pokemon_family']['family_id'] == 16 and inventory_item['inventory_item_data']['pokemon_family']['candy'] > 11:
-                                  self.log.info("Evolving pokemon: %s", self.pokemon_names[str(pokemon['pokemon_id'])])
-                                  self.evolve_pokemon(pokemon_id = pokemon['id'])
-                        self.log.debug("Releasing pokemon: %s", pokemon)
-                        self.log.info("Releasing pokemon: %s IV: %s", self.pokemon_names[str(pokemon['pokemon_id'])], pokemonIVPercentage(pokemon))
-                        self.release_pokemon(pokemon_id = pokemon["id"])
+                        self.release_single_pokemon(pokemon)
+        return True
 
-        return self.call()
+    def auto_evolve(self, pokemons, inventory_items):
+        for pokemon in pokemons:
+            if pokemon['pokemon_id'] in self.AUTO_EVOLVE_POKEMON_IDS:
+                for inventory_item in inventory_items:
+                    if "pokemon_family" in inventory_item['inventory_item_data'] and inventory_item['inventory_item_data']['pokemon_family']['family_id'] == 16 and inventory_item['inventory_item_data']['pokemon_family']['candy'] > 11:
+                        self.log.info("Evolving pokemon: %s", self.pokemon_names[str(pokemon['pokemon_id'])])
+                        self.evolve_pokemon(pokemon_id = pokemon['id'])
+        return True
 
 
     def disk_encounter_pokemon(self, lureinfo):
         try:
-             encounter_id = lureinfo['encounter_id']
-             fort_id = lureinfo['fort_id']
-             position = self._posf
-             resp = self.disk_encounter(encounter_id=encounter_id, fort_id=fort_id, player_latitude=position[0], player_longitude=position[1]).call()['responses']['DISK_ENCOUNTER']
-             if resp['result'] == 1:
-                 capture_status = -1
-                 while capture_status != 0 and capture_status != 3:
-                     catch_attempt = self.attempt_catch(encounter_id,fort_id)
-                     capture_status = catch_attempt['status']
-                     if capture_status == 1:
-                         self.log.debug("Caught Pokemon: : %s", catch_attempt)
-                         self.log.info("Caught Pokemon:  %s", self.pokemon_names[str(resp['pokemon_data']['pokemon_id'])])
-                         sleep(2) # If you want to make it faster, delete this line... would not recommend though
-                         return catch_attempt
-                     elif capture_status != 2:
-                         self.log.debug("Failed Catch: : %s", catch_attempt)
-                         self.log.info("Failed to catch Pokemon:  %s", self.pokemon_names[str(resp['pokemon_data']['pokemon_id'])])
-                         return False
-                     sleep(2) # If you want to make it faster, delete this line... would not recommend though
+            encounter_id = lureinfo['encounter_id']
+            fort_id = lureinfo['fort_id']
+            position = self._posf
+            resp = self.disk_encounter(encounter_id=encounter_id, fort_id=fort_id, player_latitude=position[0], player_longitude=position[1]).call()['responses']['DISK_ENCOUNTER']
+            if resp['result'] == 1:
+                capture_status = -1
+                while capture_status != 0 and capture_status != 3:
+                    catch_attempt = self.attempt_catch(encounter_id,fort_id)
+                    capture_status = catch_attempt['status']
+                    if capture_status == 1:
+                        self.log.debug("Caught Pokemon: : %s", catch_attempt)
+                        self.log.info("Caught Pokemon:  %s", self.pokemon_names[str(resp['pokemon_data']['pokemon_id'])])
+                        sleep(2) # If you want to make it faster, delete this line... would not recommend though
+                        return catch_attempt
+                    elif capture_status != 2:
+                        self.log.debug("Failed Catch: : %s", catch_attempt)
+                        self.log.info("Failed to catch Pokemon:  %s", self.pokemon_names[str(resp['pokemon_data']['pokemon_id'])])
+                        return False
+                    sleep(2) # If you want to make it faster, delete this line... would not recommend though
         except Exception as e:
             self.log.error("Error in disk encounter %s", e)
             return False
