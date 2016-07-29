@@ -7,7 +7,7 @@ def pokemonIVPercentage(pokemon):
 
 def pokemonIV(pokemon):
     return math.ceil(((pokemon.get('individual_attack', 0) + pokemon.get('individual_stamina', 0) + pokemon.get(
-        'individual_defense', 0) + 0.0) / 45.0) * 100.0)
+        'individual_defense', 0) + 0.0) / 45.0) * 100.0 * 31 / 100.0)
 
 
 def get_inventory_data(res, poke_names):
@@ -20,4 +20,4 @@ def get_inventory_data(res, poke_names):
     return (os.linesep.join(map(lambda x: "{0}, CP {1}, IV {2:.2f}".format(
         poke_names[str(x['pokemon_data']['pokemon_id'])].encode('ascii', 'ignore'),
         x['pokemon_data']['cp'],
-        pokemonIVPercentage(x['pokemon_data'])), inventory_items_pokemon_list)))
+        pokemonIV(x['pokemon_data'])), inventory_items_pokemon_list)))
