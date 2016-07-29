@@ -279,7 +279,7 @@ class PGoApi:
 
                 pokemons = sorted(pokemons, lambda x,y: cmp(x['pokemon_id'], y['pokemon_id']))
                 for pokemon in pokemons[MIN_SIMILAR_POKEMON:]:
-                    if pokemonIV(pokemon) < caught_pokemon_dict[pokemon['pokemon_id']] and pokemonIV(pokemon) < self.KEEP_BEST_POKEMON_MIN_IV:
+                    if pokemonIV(pokemon) < caught_pokemon_dict[pokemon['pokemon_id']] and (pokemonIV(pokemon) < self.KEEP_BEST_POKEMON_MIN_IV or pokemon['cp'] < self.KEEP_BEST_POKEMON_MIN_CP):
                         self.release_single_pokemon(pokemon)
             else:
                 pokemons = sorted(pokemons, lambda x,y: cmp(x['cp'],y['cp']),reverse=True)
