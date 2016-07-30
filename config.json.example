@@ -1,0 +1,21 @@
+{
+    "accounts" :[
+        {
+            "auth_service": "google",
+            "username": "",
+            "password": "",
+            "location": "137 Esplanade, Altona VIC 3018, Australia",
+            "USE_GOOGLE": true,
+            "GMAPS_API_KEY_1": "",
+            "GMAPS_API_KEY_2": "",
+            "GMAPS_API_KEY_3": "",
+            "MIN_KEEP_IV" : 50,
+            "KEEP_CP_OVER": 500,
+            "STEP_SIZE": 200,
+            "AUTO_EVOLVE_POKEMON_IDS": [16, 10, 13],
+            "KEEP_BEST_POKEMON_ONLY": true,
+            "KEEP_BEST_POKEMON_MIN_CP": 400,
+            "KEEP_BEST_POKEMON_MIN_IV": 20
+        }
+    ]
+}
