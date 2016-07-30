@@ -308,34 +308,37 @@ class PGoApi:
 
 
     def disk_encounter_pokemon(self, lureinfo):
-        encounter_id = lureinfo['encounter_id']
-        fort_id = lureinfo['fort_id']
-        position = self._posf
-        resp = self.disk_encounter(encounter_id=encounter_id, fort_id=fort_id, player_latitude=position[0], player_longitude=position[1]).call()['responses']['DISK_ENCOUNTER']
-        pokeball = 1
-        if resp['result'] == 1:
-            capture_status = -1
-            while capture_status != 0 and capture_status != 3:
-                try:
-                    catch_attempt = self.attempt_catch(encounter_id, fort_id, pokeball)
-                    capture_status = catch_attempt['status']
-                    if capture_status == 1:
-                        self.log.debug("Caught Pokemon: : %s", catch_attempt)
-                        self.log.info("Caught Pokemon:  %s (CP: %s)", self.pokemon_names[str(resp['pokemon_data']['pokemon_id'])], resp['pokemon_data']['cp'])
-                        sleep(2) # If you want to make it faster, delete this line... would not recommend though
-                        return catch_attempt
-                    elif capture_status == 2:
+        try:
+            encounter_id = lureinfo['encounter_id']
+            fort_id = lureinfo['fort_id']
+            position = self._posf
+            resp = self.disk_encounter(encounter_id=encounter_id, fort_id=fort_id, player_latitude=position[0], player_longitude=position[1]).call()['responses']['DISK_ENCOUNTER']
+            pokeball = 1
+            if resp['result'] == 1:
+                capture_status = -1
+                while capture_status != 0 and capture_status != 3:
+                    try:
+                        catch_attempt = self.attempt_catch(encounter_id, fort_id, pokeball)
+                        capture_status = catch_attempt['status']
+                        if capture_status == 1:
+                            self.log.debug("Caught Pokemon: : %s", catch_attempt)
+                            self.log.info("Caught Pokemon:  %s (CP: %s)", self.pokemon_names[str(resp['pokemon_data']['pokemon_id'])], resp['pokemon_data']['cp'])
+                            sleep(2) # If you want to make it faster, delete this line... would not recommend though
+                            return catch_attempt
+                        elif capture_status == 2:
+                            pokeball += 1
+                        elif capture_status != 2:
+                            self.log.debug("Failed Catch: : %s", catch_attempt)
+                            self.log.info("Failed to catch Pokemon:  %s (CP: %s)", self.pokemon_names[str(resp['pokemon_data']['pokemon_id'])], resp['pokemon_data']['cp'])
+                    except Exception as e:
                         pokeball += 1
-                    elif capture_status != 2:
-                        self.log.debug("Failed Catch: : %s", catch_attempt)
-                        self.log.info("Failed to catch Pokemon:  %s (CP: %s)", self.pokemon_names[str(resp['pokemon_data']['pokemon_id'])], resp['pokemon_data']['cp'])
-                except Exception as e:
-                    pokeball += 1
+        except Exception as e:
+            self.log.error("Error in disk encounter %s", e)
         return False
         sleep(2) # If you want to make it faster, delete this line... would not recommend though
 
 
-    def encounter_pokemon(self,pokemon):
+    def encounter_pokemon(self, pokemon):
         try:
             encounter_id = pokemon['encounter_id']
             spawn_point_id = pokemon['spawn_point_id']
@@ -362,9 +365,9 @@ class PGoApi:
                         sleep(2) # If you want to make it faster, delete this line... would not recommend though
                     except Exception as e:
                         pokeball += 1
-            return False
         except Exception as e:
             self.log.error("Error in pokemon encounter %s", e)
+        return False
 
 
 
