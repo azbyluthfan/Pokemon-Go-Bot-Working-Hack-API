@@ -169,7 +169,13 @@ class PGoApi:
         self._heartbeat_number += 1
         return res
     def walk_to(self,loc):
-        steps = get_route(self._posf, loc, self.config.get("USE_GOOGLE", False), self.config.get("GMAPS_API_KEY", ""))
+        try:
+            steps = get_route(self._posf, loc, self.config.get("USE_GOOGLE", False), self.config.get("GMAPS_API_KEY_1", ""))
+        except Exception as e:
+            try:
+                steps = get_route(self._posf, loc, self.config.get("USE_GOOGLE", False), self.config.get("GMAPS_API_KEY_1", ""))
+            except Exception as e:
+                steps = get_route(self._posf, loc, self.config.get("USE_GOOGLE", False), self.config.get("GMAPS_API_KEY_3", ""))
         for step in steps:
             for i,next_point in enumerate(get_increments(self._posf,step,self.config.get("STEP_SIZE", 200))):
                 self.set_position(*next_point)
@@ -178,6 +184,7 @@ class PGoApi:
                 sleep(2) # If you want to make it faster, delete this line... would not recommend though
                 while self.catch_near_pokemon():
                     sleep(1) # If you want to make it faster, delete this line... would not recommend though
+
 
 
 
@@ -223,11 +230,11 @@ class PGoApi:
         neighbors = getNeighbors(self._posf)
         return self.get_map_objects(latitude=position[0], longitude=position[1], since_timestamp_ms=[0]*len(neighbors), cell_id=neighbors).call()
     
-    def attempt_catch(self,encounter_id,spawn_point_guid): #Problem here... add 4 if you have master ball
-        for i in range(1,3): # Range 1...4 iff you have master ball `range(1,4)`
+    def attempt_catch(self, encounter_id, spawn_point_guid, pokeball):        
+        try:
             r = self.catch_pokemon(
                 normalized_reticle_size= 1.950,
-                pokeball = i,
+                pokeball = pokeball,
                 spin_modifier= 0.850,
                 hit_pokemon=True,
                 normalized_hit_position=1,
@@ -236,6 +243,8 @@ class PGoApi:
                 ).call()['responses']['CATCH_POKEMON']
             if "status" in r:
                 return r
+        except Exception as e:
+            return False
 
     def cleanup_inventory(self, inventory_items=None):
         if not inventory_items:
@@ -299,53 +308,63 @@ class PGoApi:
 
 
     def disk_encounter_pokemon(self, lureinfo):
-        try:
-            encounter_id = lureinfo['encounter_id']
-            fort_id = lureinfo['fort_id']
-            position = self._posf
-            resp = self.disk_encounter(encounter_id=encounter_id, fort_id=fort_id, player_latitude=position[0], player_longitude=position[1]).call()['responses']['DISK_ENCOUNTER']
-            if resp['result'] == 1:
-                capture_status = -1
-                while capture_status != 0 and capture_status != 3:
-                    catch_attempt = self.attempt_catch(encounter_id,fort_id)
+        encounter_id = lureinfo['encounter_id']
+        fort_id = lureinfo['fort_id']
+        position = self._posf
+        resp = self.disk_encounter(encounter_id=encounter_id, fort_id=fort_id, player_latitude=position[0], player_longitude=position[1]).call()['responses']['DISK_ENCOUNTER']
+        pokeball = 1
+        if resp['result'] == 1:
+            capture_status = -1
+            while capture_status != 0 and capture_status != 3:
+                try:
+                    catch_attempt = self.attempt_catch(encounter_id, fort_id, pokeball)
                     capture_status = catch_attempt['status']
                     if capture_status == 1:
                         self.log.debug("Caught Pokemon: : %s", catch_attempt)
                         self.log.info("Caught Pokemon:  %s (CP: %s)", self.pokemon_names[str(resp['pokemon_data']['pokemon_id'])], resp['pokemon_data']['cp'])
                         sleep(2) # If you want to make it faster, delete this line... would not recommend though
                         return catch_attempt
+                    elif capture_status == 2:
+                        pokeball += 1
                     elif capture_status != 2:
                         self.log.debug("Failed Catch: : %s", catch_attempt)
                         self.log.info("Failed to catch Pokemon:  %s (CP: %s)", self.pokemon_names[str(resp['pokemon_data']['pokemon_id'])], resp['pokemon_data']['cp'])
-                        return False
-                    sleep(2) # If you want to make it faster, delete this line... would not recommend though
-        except Exception as e:
-            self.log.error("Error in disk encounter %s", e)
-            return False
+                except Exception as e:
+                    pokeball += 1
+        return False
+        sleep(2) # If you want to make it faster, delete this line... would not recommend though
 
 
     def encounter_pokemon(self,pokemon):
-        encounter_id = pokemon['encounter_id']
-        spawn_point_id = pokemon['spawn_point_id']
-        position = self._posf
-        encounter = self.encounter(encounter_id=encounter_id,spawn_point_id=spawn_point_id,player_latitude=position[0],player_longitude=position[1]).call()['responses']['ENCOUNTER']
-        self.log.debug("Started Encounter: %s", encounter)
-        if encounter['status'] == 1:
-            capture_status = -1
-            while capture_status != 0 and capture_status != 3:
-                catch_attempt = self.attempt_catch(encounter_id,spawn_point_id)
-                capture_status = catch_attempt['status']
-                if capture_status == 1:
-                    self.log.debug("Caught Pokemon: : %s", catch_attempt)
-                    self.log.info("Caught Pokemon:  %s ", self.pokemon_names[str(pokemon['pokemon_id'])])
-                    sleep(2) # If you want to make it faster, delete this line... would not recommend though
-                    return catch_attempt
-                elif capture_status != 2:
-                    self.log.debug("Failed Catch: : %s", catch_attempt)
-                    self.log.info("Failed to Catch Pokemon:  %s", self.pokemon_names[str(pokemon['pokemon_id'])])
-                return False
-                sleep(2) # If you want to make it faster, delete this line... would not recommend though
-        return False
+        try:
+            encounter_id = pokemon['encounter_id']
+            spawn_point_id = pokemon['spawn_point_id']
+            position = self._posf
+            encounter = self.encounter(encounter_id=encounter_id,spawn_point_id=spawn_point_id,player_latitude=position[0],player_longitude=position[1]).call()['responses']['ENCOUNTER']
+            self.log.debug("Started Encounter: %s", encounter)
+            pokeball = 1
+            if encounter['status'] == 1:
+                capture_status = -1
+                while capture_status != 0 and capture_status != 3:
+                    try:
+                        catch_attempt = self.attempt_catch(encounter_id, spawn_point_id, pokeball)                        
+                        capture_status = catch_attempt['status']
+                        if capture_status == 1:
+                            self.log.debug("Caught Pokemon: : %s", catch_attempt)
+                            self.log.info("Caught Pokemon:  %s ", self.pokemon_names[str(pokemon['pokemon_id'])])
+                            sleep(2) # If you want to make it faster, delete this line... would not recommend though
+                            return catch_attempt
+                        elif capture_status == 2:
+                            pokeball += 1
+                        elif capture_status != 2:
+                            self.log.debug("Failed Catch: : %s", catch_attempt)
+                            self.log.info("Failed to Catch Pokemon:  %s", self.pokemon_names[str(pokemon['pokemon_id'])])
+                        sleep(2) # If you want to make it faster, delete this line... would not recommend though
+                    except Exception as e:
+                        pokeball += 1
+            return False
+        except Exception as e:
+            self.log.error("Error in pokemon encounter %s", e)
 
 
 
